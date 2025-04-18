@@ -1,0 +1,78 @@
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
+from langchain.llms.base import LLM
+from langchain.chains import ConversationChain
+from langchain.memory import ConversationBufferMemory
+from langchain.prompts import PromptTemplate
+
+# Load CodeLlama model
+model_name = "codellama/CodeLlama-7b-Instruct-hf"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto")
+
+# Custom LLM class for LangChain
+class CodeLlamaLLM(LLM):
+    def _call(self, prompt: str, stop=None) -> str:
+        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=512,
+            temperature=0.7,
+            top_p=0.95,
+            do_sample=True,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+        full_output = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        # Extract only the new response (after "AI:")
+        response = full_output[len(prompt):].strip()
+        if "Human:" in response:
+            response = response.split("Human:")[0].strip()
+        if "AI:" in response:
+            response = response.split("AI:")[-1].strip()
+
+        return response
+
+    @property
+    def _llm_type(self) -> str:
+        return "custom_codellama"
+
+# Prompt template: Only generate commands based on the input vulnerability
+prompt_template = PromptTemplate(
+    input_variables=["history", "input"],
+    template="""You are a cybersecurity expert analyzing the results of a penetration testing tool.
+    Based on the following vulnerability, suggest only the appropriate penetration testing command. 
+    Your response should be a command line or script only. Do not provide explanations or information outside of a command.
+
+    Chat History:
+    {history}
+
+    Human: {input}
+    AI (command only):"""
+)
+
+# Initialize LangChain conversation
+llm = CodeLlamaLLM()
+conversation = ConversationChain(
+    llm=llm,
+    memory=ConversationBufferMemory(),
+    prompt=prompt_template,
+    verbose=True
+)
+
+# Chat loop
+while True:
+    user_input = input("You: ")
+
+
+
+
+
+
+
+
+
+
+
+
